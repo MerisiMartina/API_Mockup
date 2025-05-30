@@ -16,7 +16,7 @@ fetchData();
 const fetchData = async () => {
 try {
 setLoading(true);
-const response = await fetch('https://6839579f6561b8d882afff50.mockapi.io/users');
+const response = await fetch('https://6839579f6561b8d882afff50.mockapi.io/users:users');
 const json = await response.json();
 console.log(json);
 setData(json);
