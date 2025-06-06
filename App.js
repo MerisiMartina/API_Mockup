@@ -1,11 +1,25 @@
 import { StatusBar } from 'expo-status-bar';
-import { StyleSheet, Text, View, FlatList, ActivityIndicator, Image, TouchableOpacity, RefreshControl, Modal, TextInput, Button } from 'react-native';
+import { 
+  StyleSheet, 
+  Text, 
+  View, 
+  FlatList, 
+  ActivityIndicator, 
+  Image, 
+  TouchableOpacity, 
+  RefreshControl, 
+  Modal, 
+  TextInput, 
+  Button, 
+  Alert 
+} from 'react-native';
 import React, { useEffect, useState } from 'react';
 import { AntDesign, Feather } from '@expo/vector-icons';
 
-export default function App() {
+const App = () => {
   const [data, setData] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
   const [refreshing, setRefreshing] = useState(false);
   const [modalVisible, setModalVisible] = useState(false);
   const [newUser, setNewUser] = useState({
@@ -22,16 +36,24 @@ export default function App() {
 
   const fetchData = async () => {
     try {
+      setError(null);
       const response = await fetch('https://6620bff93bf790e070b07208.mockapi.io/users');
+      
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+      
       const json = await response.json();
       setData(json);
     } catch (error) {
-      console.error(error);
+      console.error('Fetch error:', error);
+      setError(error.message);
+      Alert.alert('Error', 'Failed to fetch users: ' + error.message);
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
-  }
+  };
 
   const onRefresh = () => {
     setRefreshing(true);
@@ -40,16 +62,27 @@ export default function App() {
 
   const deleteUser = async (id) => {
     try {
-      await fetch(`https://6620bff93bf790e070b07208.mockapi.io/users/${id}`, {
+      const response = await fetch(`https://6620bff93bf790e070b07208.mockapi.io/users/${id}`, {
         method: 'DELETE'
       });
-      fetchData(); // Refresh the list after deletion
+      
+      if (!response.ok) {
+        throw new Error('Failed to delete user');
+      }
+      
+      fetchData();
     } catch (error) {
-      console.error(error);
+      console.error('Delete error:', error);
+      Alert.alert('Error', 'Failed to delete user: ' + error.message);
     }
   };
 
   const addUser = async () => {
+    if (!newUser.name || !newUser.username || !newUser.email) {
+      Alert.alert('Validation Error', 'Please fill all required fields');
+      return;
+    }
+
     try {
       const response = await fetch('https://6620bff93bf790e070b07208.mockapi.io/users', {
         method: 'POST',
@@ -58,21 +91,45 @@ export default function App() {
         },
         body: JSON.stringify(newUser),
       });
-      if (response.ok) {
-        setModalVisible(false);
-        setNewUser({
-          name: '',
-          username: '',
-          email: '',
-          phone: '',
-          avatar: 'https://i.pravatar.cc/150?img=' + Math.floor(Math.random() * 70)
-        });
-        fetchData(); // Refresh the list after addition
+      
+      if (!response.ok) {
+        throw new Error('Failed to add user');
       }
+      
+      setModalVisible(false);
+      setNewUser({
+        name: '',
+        username: '',
+        email: '',
+        phone: '',
+        avatar: 'https://i.pravatar.cc/150?img=' + Math.floor(Math.random() * 70)
+      });
+      fetchData();
     } catch (error) {
-      console.error(error);
+      console.error('Add error:', error);
+      Alert.alert('Error', 'Failed to add user: ' + error.message);
     }
   };
+
+  const renderItem = ({ item }) => (
+    <View style={styles.cella}>
+      <Image
+        source={{ uri: item.avatar || 'https://i.pravatar.cc/150?img=0' }}
+        style={styles.avatar}
+      />
+      <View style={styles.userInfo}>
+        <Text style={styles.name}>{item.name || 'No name'} {item.username || ''}</Text>
+        <Text>{item.email || 'No email'}</Text>
+        <Text>{item.phone || 'No phone'}</Text>
+      </View>
+      <TouchableOpacity 
+        style={styles.deleteButton}
+        onPress={() => deleteUser(item.id)}
+      >
+        <Feather name="trash-2" size={24} color="red" />
+      </TouchableOpacity>
+    </View>
+  );
 
   return (
     <View style={styles.container}>
@@ -80,6 +137,11 @@ export default function App() {
       
       {loading ? (
         <ActivityIndicator size="large" color="#0000ff" />
+      ) : error ? (
+        <View style={styles.errorContainer}>
+          <Text style={styles.errorText}>{error}</Text>
+          <Button title="Retry" onPress={fetchData} />
+        </View>
       ) : (
         <>
           <FlatList
@@ -91,25 +153,12 @@ export default function App() {
                 onRefresh={onRefresh}
               />
             }
-            renderItem={({ item }) => (
-              <View style={styles.cella}>
-                <Image
-                  source={{ uri: item.avatar }}
-                  style={styles.avatar}
-                />
-                <View style={styles.userInfo}>
-                  <Text style={styles.name}>{item.name} {item.username}</Text>
-                  <Text>{item.email}</Text>
-                  <Text>{item.phone}</Text>
-                </View>
-                <TouchableOpacity 
-                  style={styles.deleteButton}
-                  onPress={() => deleteUser(item.id)}
-                >
-                  <Feather name="trash-2" size={24} color="red" />
-                </TouchableOpacity>
+            renderItem={renderItem}
+            ListEmptyComponent={
+              <View style={styles.emptyContainer}>
+                <Text>No users found</Text>
               </View>
-            )}
+            }
           />
           
           <TouchableOpacity 
@@ -129,33 +178,34 @@ export default function App() {
       >
         <View style={styles.modalContainer}>
           <View style={styles.modalContent}>
-            <Text style={styles.modalTitle}>Aggiungi nuovo utente</Text>
+            <Text style={styles.modalTitle}>Add New User</Text>
             
             <TextInput
               style={styles.input}
-              placeholder="Nome"
+              placeholder="Name*"
               value={newUser.name}
               onChangeText={(text) => setNewUser({...newUser, name: text})}
             />
             
             <TextInput
               style={styles.input}
-              placeholder="Username"
+              placeholder="Username*"
               value={newUser.username}
               onChangeText={(text) => setNewUser({...newUser, username: text})}
             />
             
             <TextInput
               style={styles.input}
-              placeholder="Email"
+              placeholder="Email*"
               value={newUser.email}
               onChangeText={(text) => setNewUser({...newUser, email: text})}
               keyboardType="email-address"
+              autoCapitalize="none"
             />
             
             <TextInput
               style={styles.input}
-              placeholder="Telefono"
+              placeholder="Phone"
               value={newUser.phone}
               onChangeText={(text) => setNewUser({...newUser, phone: text})}
               keyboardType="phone-pad"
@@ -163,12 +213,12 @@ export default function App() {
             
             <View style={styles.buttonContainer}>
               <Button
-                title="Annulla"
+                title="Cancel"
                 onPress={() => setModalVisible(false)}
                 color="#999"
               />
               <Button
-                title="Aggiungi"
+                title="Add"
                 onPress={addUser}
                 disabled={!newUser.name || !newUser.username || !newUser.email}
               />
@@ -178,7 +228,7 @@ export default function App() {
       </Modal>
     </View>
   );
-}
+};
 
 const styles = StyleSheet.create({
   container: {
@@ -254,4 +304,23 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     marginTop: 10,
   },
+  errorContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  errorText: {
+    color: 'red',
+    marginBottom: 20,
+    textAlign: 'center',
+  },
+  emptyContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
 });
+
+export default App;
